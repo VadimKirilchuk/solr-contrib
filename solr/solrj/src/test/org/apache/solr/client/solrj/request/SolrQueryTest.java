@@ -16,8 +16,10 @@
  */
 package org.apache.solr.client.solrj.request;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -177,8 +179,7 @@ public class SolrQueryTest extends SolrTestCase {
   /*
    * Verifies the symbolic sort operations
    */
-  @SuppressForbidden(reason = "XXX: security hole")
-  public void testSort() throws IOException {
+  public void testSort() {
 
     SolrQuery q = new SolrQuery("dog");
 
@@ -238,13 +239,35 @@ public class SolrQueryTest extends SolrTestCase {
     q.removeSort(SortClause.asc("C"));
     q.removeSort(SortClause.desc("B"));
     assertEquals("D asc", q.get(CommonParams.SORT));
+  }
 
-    // Verify that a query containing a SortClause is serializable
-    q.clearSorts();
-    q.addSort("1", SolrQuery.ORDER.asc);
-    ObjectOutputStream out = new ObjectOutputStream(new ByteArrayOutputStream());
+  @SuppressForbidden(reason = "Serialization test for SolrQuery/SolrParams")
+  public void testSolrQuerySerialization() throws IOException, ClassNotFoundException {
+    SolrQuery q = new SolrQuery("dog");
+    q.addSort("price", SolrQuery.ORDER.asc);
+    q.addSort("date", SolrQuery.ORDER.desc);
+    q.setFacet(true);
+    q.addFacetField("category");
+    q.setRows(20);
+
+    // Serialize
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    ObjectOutputStream out = new ObjectOutputStream(baos);
     out.writeObject(q);
     out.close();
+
+    // Deserialize
+    ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+    ObjectInputStream ois = new ObjectInputStream(bais);
+    SolrQuery deserialized = (SolrQuery) ois.readObject();
+    ois.close();
+
+    // Verify round-trip
+    assertEquals(q.getQuery(), deserialized.getQuery());
+    assertEquals(q.getSorts(), deserialized.getSorts());
+    assertArrayEquals(q.getFacetFields(), deserialized.getFacetFields());
+    assertEquals(q.getRows(), deserialized.getRows());
+    assertEquals(q.getBool(FacetParams.FACET), deserialized.getBool(FacetParams.FACET));
   }
 
   public void testFacetSort() {
